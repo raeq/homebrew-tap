@@ -1,0 +1,80 @@
+name: Bump ibook2epub
+
+# Lives in the tap rather than in the ibook2epub repo. A workflow there would
+# need a personal access token to push here, because GITHUB_TOKEN is scoped to
+# the repository that issued it. Polling from this side needs no secret at all:
+# the push is to itself.
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Read the released version and the packaged one
+      id: versions
+      run: |
+        latest=$(curl -fsSL https://pypi.org/pypi/ibook2epub/json | python3 -c \
+          'import json,sys; print(json.load(sys.stdin)["info"]["version"])')
+        current=$(grep -oE 'ibook2epub-[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz' \
+          Formula/ibook2epub.rb | head -1 | sed 's/ibook2epub-//; s/\.tar\.gz//')
+        echo "latest=$latest"   >> "$GITHUB_OUTPUT"
+        echo "current=$current" >> "$GITHUB_OUTPUT"
+        echo "Formula has $current, PyPI has $latest"
+
+    - name: Rewrite the url and checksum
+      if: steps.versions.outputs.latest != steps.versions.outputs.current
+      run: |
+        python3 - "${{ steps.versions.outputs.latest }}" <<'PY'
+        import json, pathlib, sys, urllib.request
+        version = sys.argv[1]
+        with urllib.request.urlopen(
+            f"https://pypi.org/pypi/ibook2epub/{version}/json"
+        ) as response:
+            payload = json.load(response)
+        sdist = next(
+            item for item in payload["urls"] if item["packagetype"] == "sdist"
+        )
+        formula = pathlib.Path("Formula/ibook2epub.rb")
+        text = formula.read_text(encoding="utf-8")
+        lines = []
+        for line in text.splitlines(keepends=True):
+            stripped = line.lstrip()
+            if stripped.startswith("url "):
+                line = f'  url "{sdist["url"]}"\n'
+            elif stripped.startswith("sha256 "):
+                line = f'  sha256 "{sdist["digests"]["sha256"]}"\n'
+            lines.append(line)
+        formula.write_text("".join(lines), encoding="utf-8")
+        PY
+        git diff --stat
+
+    # Verified before pushing, not after. A push from a workflow does not
+    # trigger another workflow, so CI would never see this commit -- and a bump
+    # that does not build should not reach anyone's brew update.
+    - name: Audit, install and test the bumped formula
+      if: steps.versions.outputs.latest != steps.versions.outputs.current
+      run: |
+        brew tap-new raeq/tap --no-git || true
+        cp Formula/*.rb "$(brew --repository)/Library/Taps/raeq/homebrew-tap/Formula/"
+        brew audit --strict --online --formula raeq/tap/ibook2epub
+        brew install --formula --build-from-source raeq/tap/ibook2epub
+        brew test raeq/tap/ibook2epub
+
+    - name: Commit
+      if: steps.versions.outputs.latest != steps.versions.outputs.current
+      run: |
+        git config user.name  "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git commit -am "ibook2epub ${{ steps.versions.outputs.latest }}
+
+        Audited, built from source and tested before this commit was made."
+        git push
