@@ -3,8 +3,8 @@ class Ibook2epub < Formula
 
   desc "Convert Apple Books epub package directories into spec-valid epub files"
   homepage "https://github.com/raeq/ibook2epub"
-  url "https://files.pythonhosted.org/packages/b2/79/0b5a231e286742b7264fa45876c5aa34c0ac816d8ac07e3009da47cd58c5/ibook2epub-2.3.0.tar.gz"
-  sha256 "c8e911d81ffb6456fe028f4c7b3485fa87fa3e3d7aba18b052a005b2a86ebd3c"
+  url "https://files.pythonhosted.org/packages/c1/74/be226ca56f1ddaea5dddda8918ad335af2be7584bc695ecff00abaeba83c/ibook2epub-2.3.1.tar.gz"
+  sha256 "f2f6598ca59bd77c5056638afbdbaa75906c664161acffd51aa9efc3a890dc7e"
   license "MIT"
 
   depends_on "python@3.13"
